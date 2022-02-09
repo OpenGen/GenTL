@@ -2,6 +2,7 @@ set(DOXYGEN_EXTRACT_ALL YES)
 set(DOXYGEN_BUILTIN_STL_SUPPORT YES)
 
 doxygen_add_docs(docs
+        gentl/modeling/sequence.h
         gentl/inference/mcmc.h
         gentl/inference/sir.h
         gentl/inference/particle_filter.h
