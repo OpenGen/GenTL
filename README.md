@@ -3,7 +3,7 @@ Template inference and learning library in C++ based on probabilistic programmin
 
 [![status](https://github.com/OpenGen/GenTL/actions/workflows/test.yml/badge.svg)](https://github.com/OpenGen/GenTL/actions?query=workflow/test)
 
-[Documentation](https://opengen.github.io/gentl-docs/latest/)
+[**Documentation**](https://opengen.github.io/gentl-docs/latest/)
 
 ## Dependencies
 
