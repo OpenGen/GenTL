@@ -5,6 +5,8 @@ Template inference and learning library in C++ based on probabilistic programmin
 
 [**Documentation**](https://opengen.github.io/gentl-docs/latest/)
 
+This is currently a header-only library, and the source code consists of `.h` files under `include/gentl/`.
+
 ## Dependencies
 
 ### C++ compiler
