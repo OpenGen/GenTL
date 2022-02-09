@@ -58,6 +58,7 @@ template <typename RNG>
 std::tuple<double, const BackwardChoiceBuffer&, const ValueChange&> update(
         RNG&, const InputChange&, const ForwardChoiceBuffer&, bool save, bool gradient)
 ```
+Note that `BackwardChoiceBuffer` and `ValueChange` references returned by `update` will become undefined after the next call to `update` or `revert` (below) or `fork` (below).
 
 Revert to the state before the most recent `update` call for which the `save` flag is set.
 ```
@@ -69,8 +70,7 @@ Return a new trace that is observationally independent from `this`:
 std::unique_ptr<Trace> fork()
 ```
 
-The `BackwardChoiceBuffer` and `ValueChange` references returned by `update` will become undefined after the next call to `update` or `revert` or `fork`.
-
+Return a view into the value of some subset of the random choices in the trace:
 ```
 const ChoiceBuffer& choices(const Selection&) const
 ```
@@ -80,6 +80,7 @@ Return the log joint probability density:
 double score() const
 ```
 
+Return the return value of the trace, which is in general different from the choices.
 ```
 Output get_return_value() const
 ```
