@@ -1,5 +1,7 @@
 # Gen Inference and Learning Template Library (GenTL}   {#mainpage}
 
+This documentation is a work-in-progress.
+
 ## Concepts
 
 Using GenTL typically involves defining your own types that adhere to a set of concepts.
