@@ -127,7 +127,9 @@ void update_gradient()
 
 ### Modeling
 
-- gentl::modeling::sequence
+- gentl::modeling::sequence::Model
+
+- gentl::modeling::sequence::Trace
 
 #### Inference and Learning
 
