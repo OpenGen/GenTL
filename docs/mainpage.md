@@ -5,40 +5,40 @@ This documentation is a work-in-progress.
 ## Concepts
 
 Using GenTL typically involves defining your own types that adhere to a set of concepts.
-GenTL does not provide any abstract classes that define these concepts.
+Note that there is no abstract class for each of these concepts in GenTL (i.e. there is no general abstract `Trace` class).
 
 ### GenerativeFunction
 
 An object whose call operator `()` returns a BoundGenerativeFunction.
 
-The input to the call is called the Input and related to the InputGradient and InputChange types.
+The type of the argument to this operator is related to the InputGradient and InputChange types.
 
 ### BoundGenerativeFunction
 
-An object that is capable of generating a Trace, given a random number generator, a parameter object, and optionally a ChoiceBuffer that describes constraints that the resulting Trace should satisfy.
+An object that is capable of generating a Trace, given a random number generator (RNG), a ParameterStore object, and optionally a ChoiceBuffer that describes constraints that the resulting Trace should satisfy.
 
 There are two template member functions that are used to obtain Traces:
 
 ```
-template <typename RNG, typename Parameters>
-std::unique_ptr<Trace> simulate(RNG& rng, Parameters&, bool gradient) const
+template <typename RNG, typename ParameterStore>
+std::unique_ptr<Trace> simulate(RNG&, ParameterStore&, bool gradient) const
 ```
 
 ```
-template <typename RNG, typename Parameters>
-std::pair<std::unique_ptr<Trace>, double> generate(RNG& rng, Parameters& parameters, bool gradient) const
+template <typename RNG, typename ParameterStore>
+std::pair<std::unique_ptr<Trace>, double> generate(RNG&, ParameterStore&, const ChoiceBuffer&, bool gradient) const
 ```
 
 There are two variants that write into a reference to a trace object instead of returning a new trace object:
 
 ```
-template <typename RNG, typename Parameters>
-void simulate(Trace& trace, RNG& rng, Parameters&, bool gradient) const
+template <typename RNG, typename ParameterStore>
+void simulate(Trace&, RNG&, ParameterStore&, bool gradient) const
 ```
 
 ```
-template <typename RNG, typename Parameters>
-double generate(Trace& trace, RNG& rng, Parameters& parameters, bool gradient) const
+template <typename RNG, typename ParameterStore>
+double generate(Trace&, RNG&, ParameterStore&, const ChoiceBuffer&, bool gradient) const
 ```
 
 ### Trace
@@ -51,7 +51,8 @@ Member functions:
 
 ```
 template <typename RNG>
-std::tuple<double, const BackwardChoiceBuffer&, const ValueChange&> update(RNG&, const InputChange&, const ForwardChoiceBuffer&, bool save, bool gradient)
+std::tuple<double, const BackwardChoiceBuffer&, const ValueChange&> update(
+        RNG&, const InputChange&, const ForwardChoiceBuffer&, bool save, bool gradient)
 ```
 
 Note that the `BackwardChoiceBuffer` and `ValueChange` references will become undefined after the next call to `update` or `revert` or `fork`.
