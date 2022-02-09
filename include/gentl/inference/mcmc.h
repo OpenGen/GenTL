@@ -18,6 +18,11 @@ See the License for the specific language governing permissions and
 
 #include <cmath>
 #include <random>
+#include <gentl/types.h>
+
+using gentl::SimulateOptions;
+using gentl::GenerateOptions;
+using gentl::UpdateOptions;
 
 namespace gentl::mcmc {
 
@@ -36,18 +41,18 @@ namespace gentl::mcmc {
             typename RNGType>
     bool mh(TraceType &model_trace, const MakeProposalType &make_proposal,
             ProposalParametersType &proposal_params, RNGType &rng,
-            ProposalTraceType &proposal_trace, bool prepare_for_gradient=false) {
+            ProposalTraceType &proposal_trace, bool precompute_gradient=false) {
         auto proposal = make_proposal(model_trace);
-        proposal.simulate(proposal_trace, rng, proposal_params, false);
-        double proposal_forward_score = proposal_trace.get_score();
-        const auto &change = proposal_trace.choices();
-        // note that log_weight and reverse_change and retdiff are only available in between
-        // a call to update and a call to revert (before calling update, they will error, and after calling revert
-        // they will error).
-        const auto& [model_log_weight, reverse_change, retdiff] = model_trace.update(
-                change, true, prepare_for_gradient);
+        proposal.simulate(rng, proposal_params, SimulateOptions(), proposal_trace);
+        double proposal_forward_score = proposal_trace.score();
+        const auto &forward_constraints = proposal_trace.choices(gentl::selection::all);
+        double model_log_weight = model_trace.update(
+                rng, gentl::change::no_change,
+                forward_constraints,
+                UpdateOptions().save(true).precompute_gradient(precompute_gradient));
+        const auto& backward_constraints = model_trace.backward_constraints();
         auto backward_proposal = make_proposal(model_trace);
-        double proposal_backward_score = backward_proposal.assess(reverse_change, rng, proposal_params);
+        auto proposal_backward_score = backward_proposal.assess(rng, proposal_params, backward_constraints);
         double prob_accept = mh_accept_prob(model_log_weight, proposal_forward_score, proposal_backward_score);
         std::bernoulli_distribution dist{prob_accept};
         bool accept = dist(rng);
@@ -62,7 +67,7 @@ namespace gentl::mcmc {
                     ProposalParametersType &proposal_params, size_t num_steps, RNGType &rng) {
         // allocate initial proposal trace memory
         auto proposal = make_proposal(model_trace);
-        auto proposal_trace = proposal.simulate(rng, proposal_params, false);
+        auto proposal_trace = proposal.simulate(rng, proposal_params, SimulateOptions());
         // do iterations, reusing proposal trace memory (as well as model trace memory)
         size_t num_accepted = 0;
         for (size_t step = 0; step < num_steps; step++) {
@@ -123,12 +128,15 @@ namespace gentl::mcmc {
         // NOTE: these buffers are only valid up until the next call to update.
         ChoiceBufferType& proposed_values = storage1;
         double forward_log_density = mala_propose_values(proposed_values, trace.choices(selection),
-                                                         trace.choice_gradients(selection), tau, rng);
-        const auto& [log_weight, previous_values, retdiff] = trace.update(proposed_values, true, true);
+                                                         trace.choice_gradient(selection), tau, rng);
+        double log_weight = trace.update(
+                rng, gentl::change::no_change, proposed_values,
+                UpdateOptions().save(true).precompute_gradient(true));
 
         // compute backward log density
+        const auto& previous_values = trace.backward_constraints();
         double backward_log_density = mala_assess(previous_values, proposed_values,
-                                                  trace.choice_gradients(selection), tau,
+                                                  trace.choice_gradient(selection), tau,
                                                   storage2);
 
         double prob_accept = std::min(1.0, std::exp(log_weight + backward_log_density - forward_log_density));
@@ -169,7 +177,7 @@ namespace gentl::mcmc {
              RNGType &rng) {
 
         // NOTE: this read-only buffer is only valid up until the next call to update.
-        const ChoiceBufferType* gradient_buffer = &trace.choice_gradients(selection);
+        const ChoiceBufferType* gradient_buffer = &trace.choice_gradient(selection);
 
         // this overwrites the memory in the buffer
         sample_momenta(momenta_buffer, rng);
@@ -185,11 +193,11 @@ namespace gentl::mcmc {
             values_buffer += eps * momenta_buffer;
 
             // get incremental log weight and new gradient
-            bool save_prev_state = (step == 0);
-            const auto&[log_weight_increment, backward_choices, retdiff] = trace.update(
-                    values_buffer, save_prev_state, true);
+            double log_weight_increment = trace.update(
+                    rng, gentl::change::no_change, values_buffer,
+                    UpdateOptions().save(step == 0).precompute_gradient(true));
             log_weight += log_weight_increment;
-            gradient_buffer = &trace.choice_gradients(selection);
+            gradient_buffer = &trace.choice_gradient(selection);
 
             // half step on momenta
             momenta_buffer += (eps / 2.0) * (*gradient_buffer);

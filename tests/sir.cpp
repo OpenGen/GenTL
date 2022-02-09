@@ -16,7 +16,6 @@ See the License for the specific language governing permissions and
 #include <catch2/catch.hpp>
 #include <gentl/util/randutils.h>
 #include <gentl/inference/sir.h>
-#include <gentl/util/mathutils.h>
 #include <iostream>
 
 using seed_seq_fe128 = gentl::randutils::seed_seq_fe<4, uint32_t>;

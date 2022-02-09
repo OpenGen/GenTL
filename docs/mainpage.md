@@ -22,27 +22,32 @@ There are two template member functions that are used to obtain Traces:
 Sample from the joint distribution, and optionally compute and cache gradients with respect to trainable parameters.
 ```
 template <typename RNG, typename ParameterStore>
-std::unique_ptr<Trace> simulate(RNG&, ParameterStore&, bool gradient) const
+std::unique_ptr<Trace> simulate(RNG&, ParameterStore&, const SimulateOptions&) const
 ```
+See gentl::SimulateOptions.
 
 Sample from an alternate distribution, and return an importance weight accounting for the difference,
 and optionally compute and cache gradients with respect to trainable parameters.
 ```
 template <typename RNG, typename ParameterStore>
-std::pair<std::unique_ptr<Trace>, double> generate(RNG&, ParameterStore&, const ChoiceBuffer&, bool gradient) const
+std::pair<std::unique_ptr<Trace>, double> generate(RNG&, ParameterStore&, const ChoiceBuffer&, const GenerateOptions&) const
 ```
+See gentl::GenerateOptions.
 
 There are two variants that write into a reference to a trace object instead of returning a new trace object:
 
 ```
 template <typename RNG, typename ParameterStore>
-void simulate(Trace&, RNG&, ParameterStore&, bool gradient) const
+void simulate(RNG&, ParameterStore&, const SimulateOptions&, Trace&) const
 ```
 
+
+Equivalent to `generate` but does not need to return a trace:
 ```
 template <typename RNG, typename ParameterStore>
-double generate(Trace&, RNG&, ParameterStore&, const ChoiceBuffer&, bool gradient) const
+double assess(RNG&, ParameterStore&, const ChoiceBuffer&) const
 ```
+
 
 ### Trace
 
@@ -50,15 +55,26 @@ A possible sample from the probability distribution of a BoundGenerativeFunction
 
 Traces typically do not have public constructors, and are instead obtained from the `simulate` and `generate` functions of a BoundGenerativeFunction.
 
+
 Member functions:
 
 Modify the state of a trace:
 ```
 template <typename RNG>
-std::tuple<double, const BackwardChoiceBuffer&, const ValueChange&> update(
-        RNG&, const InputChange&, const ForwardChoiceBuffer&, bool save, bool gradient)
+double update(RNG&, const InputChange&, const ForwardChoiceBuffer&, const UpdateOptions&)
 ```
+See gentl::UpdateOptions.
 Note that `BackwardChoiceBuffer` and `ValueChange` references returned by `update` will become undefined after the next call to `update` or `revert` (below) or `fork` (below).
+
+Return the constraints, that, if passed to `update`, would revert the most recent `update` (only valid after a call to `update` and before a call to `revert` or `fork`):
+```
+const ChoiceBuffer& backward_constraints()
+```
+
+Return an object representing the change in return value.
+```
+const ValueChange& return_value_change()
+```
 
 Revert to the state before the most recent `update` call for which the `save` flag is set.
 ```
@@ -75,6 +91,8 @@ Return a view into the value of some subset of the random choices in the trace:
 const ChoiceBuffer& choices(const Selection&) const
 ```
 
+NOTE: gentl::mcmc::mh requires that the proposal implement `choices(const gentl::selections:all)`.
+
 Return the log joint probability density:
 ```
 double score() const
@@ -82,15 +100,25 @@ double score() const
 
 Return the return value of the trace, which is in general different from the choices.
 ```
-Output get_return_value() const
+Output return_value() const
 ```
 
 Compute the gradient of the log joint density with respect to the parameters, and accumulate this gradient into the given GradientAccumulator object.
 ```
-InputGradient parameter_gradient(const OutputGradient&, double scaler, GradientAccumulator&)
+void parameter_gradient(GradientAccumulator&, double scaler=1.0)
 ```
 
-Compute the gradient of the log joint density with respect to the choices, and return it>
+Compositional variant:
+```
+InputGradient parameter_gradient(GradientAccumulator&, const OutputGradient&, double scaler=1.0)
+```
+
+Return the gradient of the log joint density with respect to the choices:
+```
+const ChoiceBuffer& choice_gradient(const Selection&)
+```
+
+Compositional variant:
 ```
 std::pair<InputGradient, const ChoiceBuffer&> choice_gradient(const Selection&, const OutputGradient&)
 ```
