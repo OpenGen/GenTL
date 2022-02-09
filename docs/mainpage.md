@@ -128,11 +128,13 @@ void update_gradient()
 
 ### Modeling
 
+#### Sequential and Temporal Models
+
 - gentl::modeling::sequence::Model
 
 - gentl::modeling::sequence::Trace
 
-#### Inference and Learning
+### Inference and Learning
 
 #### Markov chain Monte Carlo (MCMC)
 
