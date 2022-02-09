@@ -65,7 +65,13 @@ Member functions:
 
 ## Functionality
 
-### Markov chain Monte Carlo (MCMC)
+### Modeling
+
+- gentl::modeling::sequence
+
+#### Inference and Learning
+
+#### Markov chain Monte Carlo (MCMC)
 
 - gentl::mcmc::mh
 
@@ -73,14 +79,14 @@ Member functions:
 
 - gentl::mcmc::mala
 
-### Sequential Monte Carlo (SMC)
+#### Sequential Monte Carlo (SMC)
 
 - gentl::smc::ParticleSystem
 
-### Sampling importance resampling (SIR)
+#### Sampling importance resampling (SIR)
 
 - gentl::sir::rolling_importance_resampling
 
-### Maximum likelihood
+#### Maximum likelihood
 
 - gentl::sgd::train_supervised
