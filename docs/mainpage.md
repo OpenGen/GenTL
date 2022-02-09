@@ -183,3 +183,9 @@ void update_gradient()
 #### Maximum likelihood
 
 - gentl::sgd::train_supervised
+
+## Types
+
+gentl::change::NoChange and singleton gentl::change::no_change
+
+gentl::change::UnknownChange

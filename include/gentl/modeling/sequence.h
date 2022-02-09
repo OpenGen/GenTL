@@ -20,6 +20,10 @@ See the License for the specific language governing permissions and
 #include <utility>
 #include <unordered_map>
 
+#include <gentl/types.h>
+using gentl::GenerateOptions;
+using gentl::UpdateOptions;
+
 namespace gentl::modeling::sequence {
 
     // model change types
@@ -47,7 +51,7 @@ namespace gentl::modeling::sequence {
 
         template <typename T>
         struct NewStepOnly {
-            NewStepOnly(T constraints_) : constraints(constraints_) {}
+            explicit NewStepOnly(T constraints_) : constraints(constraints_) {}
             T constraints;
         };
 
@@ -109,8 +113,8 @@ namespace gentl::modeling::sequence {
         Model(const SubmodelType& submodel, const ValueType& init_value) : submodel_(submodel), init_value_(init_value) {}
         typedef Trace<SubmodelType, SubtraceType, ValueType, ParametersType> trace_type;
         template <typename RNGType>
-        std::pair<std::unique_ptr<trace_type>,double> generate(const constraints::Empty& obs, RNGType& rng,
-                                                               ParametersType& parameters, bool gradient) const;
+        std::pair<std::unique_ptr<trace_type>,double> generate(
+                RNGType& rng, ParametersType& parameters, const constraints::Empty& obs, const GenerateOptions&) const;
     };
 
     // TODO implement save_previous
@@ -142,15 +146,15 @@ namespace gentl::modeling::sequence {
 
         // extend (does not mutate any state)
         template<typename RNGType, typename ConstraintsType>
-        std::tuple<double, const constraints::Empty&, const valuechange::Unknown&> update(
+        double update(
                 RNGType& rng, const modelchange::Extend&, const constraints::NewStepOnly<ConstraintsType>& constraints,
-                bool save_previous, bool gradient) {
-            if (gradient)
+                const UpdateOptions& options) {
+            if (options.precompute_gradient())
                 throw std::logic_error("gradient not implemented");
-            if (save_previous)
+            if (options.save())
                 throw std::logic_error("save_previous not yet implemented");
             ValueType args = (t_ == 0) ? init_value_ : last_->subtrace().return_value();
-            auto [subtrace, log_weight] = submodel_(args).generate(constraints.constraints, rng, parameters_, false);
+            auto [subtrace, log_weight] = submodel_(args).generate(rng, parameters_, constraints.constraints, GenerateOptions());
             if (t_ == 0) {
                 last_ = std::make_shared<TimeSlice<SubtraceType>>(std::move(subtrace));
             } else {
@@ -158,7 +162,7 @@ namespace gentl::modeling::sequence {
             }
             assert(last_->t() == t_);
             t_++;
-            return {log_weight, constraints::empty, valuechange::unknown};
+            return log_weight;
         }
 
         // mutates history (copy-on-write)
@@ -166,10 +170,10 @@ namespace gentl::modeling::sequence {
         template<typename RNGType, typename ConstraintsType>
         std::tuple<double, const constraints::General<ConstraintsType>&, const valuechange::Unknown&> update(
                 RNGType &rng, const modelchange::None&, const constraints::General<ConstraintsType>& constraints,
-                bool save_previous, bool gradient) {
-            if (gradient)
+                const UpdateOptions& options) {
+            if (options.precompute_gradient())
                 throw std::logic_error("gradient not implemented");
-            if (save_previous)
+            if (options.save())
                 throw std::logic_error("save_previous not yet implemented");
 
             using slice_t = TimeSlice<SubtraceType>;
@@ -238,7 +242,7 @@ namespace gentl::modeling::sequence {
     template <typename SubmodelType, typename SubtraceType, typename ValueType, typename ParametersType>
     template <typename RNGType>
     std::pair<std::unique_ptr<typename Model<SubmodelType,SubtraceType,ValueType,ParametersType>::trace_type>,double> Model<SubmodelType,SubtraceType,ValueType,ParametersType>::generate(
-            const constraints::Empty& obs, RNGType& rng, ParametersType& parameters, bool gradient) const {
+            RNGType& rng, ParametersType& parameters, const constraints::Empty& obs, const GenerateOptions&) const {
         // create an initial trace with zero time steps
         auto trace = std::make_unique<trace_type>(submodel_, init_value_, parameters);
         return {std::move(trace), 0.0};

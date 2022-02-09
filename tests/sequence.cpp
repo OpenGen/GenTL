@@ -25,7 +25,6 @@ using Eigen::VectorXd;
 using Eigen::MatrixXd;
 using Eigen::indexing::all;
 
-
 namespace sequence = gentl::modeling::sequence;
 
 struct Parameters {
@@ -43,7 +42,12 @@ public:
     explicit BoundKernel(long input) : input_(input) { }
     template <typename RNGType>
     std::pair<std::unique_ptr<KernelTrace>,double> generate(
-            const long& obs, RNGType& rng, Parameters& parameters, bool gradient) const;
+            RNGType& rng, Parameters& parameters, const long& observation,
+            const GenerateOptions& options) const;
+    template <typename RNGType>
+    std::pair<std::unique_ptr<KernelTrace>,double> generate(
+            RNGType& rng, Parameters& parameters, const sequence::constraints::Empty&,
+            const GenerateOptions& options) const;
 };
 struct Kernel {
     BoundKernel operator()(long input) const { return BoundKernel(input); }
@@ -61,8 +65,8 @@ struct KernelTrace {
 
 template <typename RNGType>
 std::pair<std::unique_ptr<KernelTrace>,double> BoundKernel::generate(
-        const long& observation, RNGType& rng, Parameters& parameters, bool gradient) const {
-    assert(!gradient);
+        RNGType& rng, Parameters& parameters, const long& observation, const GenerateOptions& options) const {
+    assert(!options.precompute_gradient());
     std::discrete_distribution<long> dynamics;
     if (input_ == -1) {
         // initial state
@@ -112,9 +116,11 @@ TEST_CASE("sequence hmm", "[sequence, particle filtering]") {
     // test particle filter
     size_t num_particles = 10000;
     gentl::smc::ParticleSystem<Trace,std::mt19937> filter{num_particles, rng};
+    std::vector<long> obs = {0, 0, 1, 2};
     filter.init_step(model, parameters, sequence::constraints::empty);
-    for (long obs : {0, 0, 1, 2}) {
-        filter.step(sequence::modelchange::extend, sequence::constraints::NewStepOnly<long>(obs));
+    auto it = obs.begin();
+    while (it != obs.end()) {
+        filter.step(sequence::modelchange::extend, sequence::constraints::NewStepOnly<long>(*it++));
         filter.resample();
     }
     double estimate = filter.log_marginal_likelihood_estimate();

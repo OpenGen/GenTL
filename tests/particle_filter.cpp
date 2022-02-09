@@ -16,20 +16,30 @@ See the License for the specific language governing permissions and
 #define CATCH_CONFIG_MAIN
 
 #include <catch2/catch.hpp>
-#include <gentl/util/randutils.h>
-#include <gentl/inference/particle_filter.h>
+
 #include <iostream>
 #include <Eigen/Dense>
+
+#include <gentl/types.h>
+#include <gentl/util/randutils.h>
+#include <gentl/inference/particle_filter.h>
+
+using gentl::GenerateOptions;
+using gentl::UpdateOptions;
 
 using Eigen::VectorXd;
 using Eigen::MatrixXd;
 using Eigen::indexing::all;
 using std::valarray;
 
+// *******************************************************************
+// ** forward algorithm to compute ground truth marginal likelihood **
+// *******************************************************************
+
 double hmm_forward_alg(const VectorXd& prior,
                        const MatrixXd& emission_dists,
                        const MatrixXd& transition_dists,
-                       const std::vector<long>& emissions) {
+                       const std::vector<size_t>& emissions) {
     assert(prior.rows() == emission_dists.cols());
     assert(prior.rows() == transition_dists.cols());
     assert(transition_dists.rows() == transition_dists.rows());
@@ -60,7 +70,7 @@ TEST_CASE("hmm forward algorithm", "[particle filtering]") {
             {0.2, 0.8} // dist. for state 1
     };
     transition_dists.transposeInPlace();
-    std::vector<long> obs {1, 0};
+    std::vector<size_t> obs {1, 0};
     double expected_marginal_likelihood = 0.0;
     // z = [0, 0]
     expected_marginal_likelihood += prior(0) * transition_dists(0, 0) * emission_dists(obs[0], 0) * emission_dists(obs[1], 0);
@@ -73,6 +83,10 @@ TEST_CASE("hmm forward algorithm", "[particle filtering]") {
     auto actual_marginal_likelihood = hmm_forward_alg(prior, emission_dists, transition_dists, obs);
     REQUIRE(std::abs(actual_marginal_likelihood - expected_marginal_likelihood) < 1e-16);
 }
+
+// ************************************************************************
+// ** minimum HMM implementation for testing particle filter correctness **
+// ************************************************************************
 
 class HMMParams {
     friend class HMM;
@@ -94,14 +108,15 @@ public:
             transition_dists_.emplace_back(column_vector.begin(), column_vector.end());
         }
     }
-
 };
-class Parameters {}; // dummy for trainable parameters
-class Discard {};
-class RetDiff {};
+
+class ParameterStore {};
+
 class Extend {};
-struct NewObs {
-    size_t obs;
+
+struct NewObservation {
+    size_t value;
+    NewObservation(size_t value_) : value(value_) {}
 };
 
 class HMMTrace;
@@ -113,8 +128,10 @@ class HMM {
 private:
 public:
     explicit HMM(HMMParams& params) : num_time_steps_(0), params_(params) {}
-    std::pair<std::unique_ptr<HMMTrace>,double> generate(const NewObs& obs, std::mt19937& rng,
-                                                         Parameters& parameters, bool gradient) const;
+    std::pair<std::unique_ptr<HMMTrace>,double> generate(
+            std::mt19937& rng, ParameterStore&, const NewObservation& observation,
+            const GenerateOptions& options) const;
+
 };
 
 class HMMTrace {
@@ -129,27 +146,32 @@ private:
             latents_(std::initializer_list<size_t>({latent})),
             model_(model) {}
 public:
-    std::tuple<double,const Discard&,const RetDiff&> update(
-            std::mt19937& rng, const Extend&, const NewObs& obs,
-            bool save_previous, bool prepare_for_gradient) {
+    double update(
+            std::mt19937& rng, const Extend&, const NewObservation& observation,
+            const UpdateOptions& options) {
+        if (options.save() || options.precompute_gradient())
+            throw std::logic_error("not implemented");
         size_t latent = model_.params_.transition_dists_[latents_.back()](rng);
-        double log_weight = std::log(model_.params_.emission_matrix_(obs.obs, latent));
+        double log_weight = std::log(model_.params_.emission_matrix_(observation.value, latent));
         latents_.emplace_back(latent);
-        emissions_.emplace_back(obs.obs);
+        emissions_.emplace_back(observation.value);
         model_.num_time_steps_ += 1;
-        return {log_weight, {}, {}};
+        return log_weight;
     }
     std::unique_ptr<HMMTrace> fork() {
-        // NOTE: this trace implementation is not efficient, it copies entire histories unecessarily
+        // NOTE: this trace implementation is not efficient, it copies entire histories unnecessarily
         return std::unique_ptr<HMMTrace>(new HMMTrace(*this));
     }
 };
 
-std::pair<std::unique_ptr<HMMTrace>,double> HMM::generate(const NewObs& obs, std::mt19937& rng,
-                                                          Parameters& parameters, bool gradient) const {
+std::pair<std::unique_ptr<HMMTrace>,double> HMM::generate(
+        std::mt19937& rng, ParameterStore&, const NewObservation& observation,
+        const GenerateOptions& options) const {
+    if (options.precompute_gradient())
+        throw std::logic_error("not implemented");
     size_t latent = params_.prior_dist_(rng);
-    double log_weight = std::log(params_.emission_matrix_(obs.obs, latent));
-    auto trace = std::unique_ptr<HMMTrace>(new HMMTrace(*this, obs.obs, latent));
+    double log_weight = std::log(params_.emission_matrix_(observation.value, latent));
+    auto trace = std::unique_ptr<HMMTrace>(new HMMTrace(*this, observation.value, latent));
     return {std::move(trace), log_weight};
 }
 
@@ -177,20 +199,20 @@ TEST_CASE("hmm particle filter", "[particle filtering]") {
     };
 
     HMM model {params};
-    Parameters dummy {};
 
     // test particle filter
-    std::vector<long> data = {0, 0, 1, 2};
+    std::vector<size_t> data = {0, 0, 1, 2};
     double expected = std::log(hmm_forward_alg(prior, emission_matrix, transition_matrix, data));
 
-    std::vector<NewObs> observations;
+    std::vector<NewObservation> observations;
     for (auto datum : data)
-        observations.emplace_back(static_cast<size_t>(datum));
+        observations.emplace_back(datum);
 
     size_t num_particles = 10000;
     gentl::smc::ParticleSystem<HMMTrace,std::mt19937> filter{num_particles, rng};
     auto observations_it = observations.cbegin();
-    filter.init_step(model, dummy, *observations_it++);
+    ParameterStore store{};
+    filter.init_step(model, store, *observations_it++);
     using std::cerr, std::endl;
     while (observations_it != observations.cend()) {
         filter.step(Extend{}, *observations_it++);
@@ -201,5 +223,5 @@ TEST_CASE("hmm particle filter", "[particle filtering]") {
     }
     double actual = filter.log_marginal_likelihood_estimate();
     cerr << "actual: " << actual << ", expected: " << expected << endl;
-//    REQUIRE(std::abs(actual - expected) < 0.02);
+    REQUIRE(std::abs(actual - expected) < 0.02);
 }

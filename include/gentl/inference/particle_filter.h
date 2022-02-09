@@ -20,7 +20,11 @@ See the License for the specific language governing permissions and
 #include <random>
 #include <algorithm>
 
+#include <gentl/types.h>
 #include <gentl/util/mathutils.h>
+
+using gentl::GenerateOptions;
+using gentl::UpdateOptions;
 
 namespace gentl::smc {
 
@@ -75,7 +79,7 @@ namespace gentl::smc {
         void init_step(const Model& model, Parameters& parameters, const Constraints& constraints) {
             // TODO make prepare_for_gradient optional for each generate() and update() call
             for (size_t i = 0; i < num_particles_; i++) {
-                auto [trace_ptr, log_weight] = model.generate(constraints, rng_, parameters, false);
+                auto [trace_ptr, log_weight] = model.generate(rng_, parameters, constraints, GenerateOptions());
                 traces_[i] = std::move(trace_ptr);
                 trace_nonowning_ptrs_[i] = traces_[i].get();
                 log_weights_[i] = log_weight;
@@ -88,13 +92,8 @@ namespace gentl::smc {
         // but the distinction is still useful for the common case when the models are normalized
         template <typename ModelChange, typename Constraints>
         void step(const ModelChange& model_change, const Constraints& constraints) {
-            for (size_t i = 0; i < traces_.size(); i++) {
-                // TODO document specification for 'update' (for the case when it includes random choices)
-                // TODO also pass an RNG argument to update...
-                const auto& [increment, discard, retdiff] = traces_[i]->update(
-                        rng_, model_change, constraints, false, false);
-                log_weights_[i] += increment;
-            }
+            for (size_t i = 0; i < traces_.size(); i++)
+                log_weights_[i] += traces_[i]->update(rng_, model_change, constraints, UpdateOptions());
         }
 
         [[nodiscard]] double effective_sample_size() const {
@@ -111,9 +110,8 @@ namespace gentl::smc {
 
             // TODO do this in a way that keeps traces in the same thread if you can to minimize data movement
             // and avoids ruining the cache every time we resample
-            for (size_t i = 0; i < num_particles_; i++) {
+            for (size_t i = 0; i < num_particles_; i++)
                 traces_tmp_[i] = traces_[parents_[i]]->fork();
-            }
             for (size_t i = 0; i < num_particles_; i++) {
                 traces_[i] = std::move(traces_tmp_[i]); // move assignment
                 trace_nonowning_ptrs_[i] = traces_[i].get();
