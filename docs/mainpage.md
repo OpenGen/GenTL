@@ -19,11 +19,14 @@ An object that is capable of generating a Trace, given a random number generator
 
 There are two template member functions that are used to obtain Traces:
 
+Sample from the joint distribution, and optionally compute and cache gradients with respect to trainable parameters.
 ```
 template <typename RNG, typename ParameterStore>
 std::unique_ptr<Trace> simulate(RNG&, ParameterStore&, bool gradient) const
 ```
 
+Sample from an alternate distribution, and return an importance weight accounting for the difference,
+and optionally compute and cache gradients with respect to trainable parameters.
 ```
 template <typename RNG, typename ParameterStore>
 std::pair<std::unique_ptr<Trace>, double> generate(RNG&, ParameterStore&, const ChoiceBuffer&, bool gradient) const
@@ -49,26 +52,30 @@ Traces typically do not have public constructors, and are instead obtained from 
 
 Member functions:
 
+Modify the state of a trace:
 ```
 template <typename RNG>
 std::tuple<double, const BackwardChoiceBuffer&, const ValueChange&> update(
         RNG&, const InputChange&, const ForwardChoiceBuffer&, bool save, bool gradient)
 ```
 
-Note that the `BackwardChoiceBuffer` and `ValueChange` references will become undefined after the next call to `update` or `revert` or `fork`.
-
+Revert to the state before the most recent `update` call for which the `save` flag is set.
 ```
 void revert()
 ```
 
+Return a new trace that is observationally independent from `this`:
 ```
-void fork()
+std::unique_ptr<Trace> fork()
 ```
+
+The `BackwardChoiceBuffer` and `ValueChange` references returned by `update` will become undefined after the next call to `update` or `revert` or `fork`.
 
 ```
 const ChoiceBuffer& choices(const Selection&) const
 ```
 
+Return the log joint probability density:
 ```
 double score() const
 ```
@@ -77,12 +84,14 @@ double score() const
 Output get_return_value() const
 ```
 
+Compute the gradient of the log joint density with respect to the parameters, and accumulate this gradient into the given GradientAccumulator object.
 ```
 InputGradient parameter_gradient(const OutputGradient&, double scaler, GradientAccumulator&)
 ```
 
+Compute the gradient of the log joint density with respect to the choices, and return it>
 ```
-std::pair<InputGradient choice_gradient(const Selection&, const OutputGradient&)
+std::pair<InputGradient, const ChoiceBuffer&> choice_gradient(const Selection&, const OutputGradient&)
 ```
 
 ### ChoiceBuffer
