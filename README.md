@@ -1,7 +1,7 @@
 # Gen Inference and Learning Template Library (GenTL)
 Template inference and learning library in C++ based on probabilistic programming  principles
 
-[![status](https://github.com/OpenGen/GenTL/actions/workflows/cmake.yml/badge.svg)](https://github.com/OpenGen/GenTL/actions?query=workflow%3Acmake)
+[![status](https://github.com/OpenGen/GenTL/actions/workflows/cmake.yml/badge.svg)](https://github.com/OpenGen/GenTL/actions?query=workflow/test)
 
 [Documentation](https://opengen.github.io/gentl-docs/latest/)
 
