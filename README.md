@@ -27,16 +27,16 @@ See [Doxygen Installation](https://www.doxygen.nl/manual/install.html).
 
 ## Testing
 
+Use CMake to build and test. Note that you can configure the C++ compiler to use with either the `CXX` environment variable or by setting the `CMAKE_CXX_COMPILER` variable, e.g.:
 ```
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_CXX_COMPILER=g++-11
 cmake --build build
 cmake --build --target test
 ```
 
 ## Generating documentation
+
 ```
 cmake --build --target docs
 ```
-
-
-
+Note that there is a Github Action that generates and deploys documentation to https://github.com/OpenGen/gentl-docs/ when there is a `push` to the `main` branch of this repository.
