@@ -9,15 +9,35 @@ GenTL does not provide any abstract classes that define these concepts.
 
 An object whose call operator `()` returns a BoundGenerativeFunction.
 
+The input to the call is called the Input and related to the InputGradient and InputChange types.
+
 ### BoundGenerativeFunction
 
 An object that is capable of generating a Trace, given a random number generator, a parameter object, and optionally a ChoiceBuffer that describes constraints that the resulting Trace should satisfy.
 
-There are two member functions that are used to generate Traces:
+There are two template member functions that are used to obtain Traces:
 
-- `simulate` (two variants)
+```
+template <typename RNG, typename Parameters>
+std::unique_ptr<Trace> simulate(RNG& rng, Parameters&, bool gradient) const
+```
 
-- `generate` (two variants)
+```
+template <typename RNG, typename Parameters>
+std::pair<std::unique_ptr<Trace>, double> generate(RNG& rng, Parameters& parameters, bool gradient) const
+```
+
+There are two variants that write into a reference to a trace object instead of returning a new trace object:
+
+```
+template <typename RNG, typename Parameters>
+void simulate(Trace& trace, RNG& rng, Parameters&, bool gradient) const
+```
+
+```
+template <typename RNG, typename Parameters>
+double generate(Trace& trace, RNG& rng, Parameters& parameters, bool gradient) const
+```
 
 ### Trace
 
@@ -27,23 +47,46 @@ Traces typically do not have public constructors, and are instead obtained from 
 
 Member functions:
 
-- `update`
+```
+template <typename RNG>
+std::tuple<double, const BackwardChoiceBuffer&, const ValueChange&> update(RNG&, const InputChange&, const ForwardChoiceBuffer&, bool save, bool gradient)
+```
 
-- `revert`
+Note that the `BackwardChoiceBuffer` and `ValueChange` references will become undefined after the next call to `update` or `revert` or `fork`.
 
-- `fork`
+```
+void revert()
+```
 
-- `choices`
+```
+void fork()
+```
 
-- `score`
+```
+const ChoiceBuffer& choices(const Selection&) const
+```
 
-- `parameter_gradient`
+```
+double score() const
+```
 
-- `choice_gradient`
+```
+Output get_return_value() const
+```
+
+```
+InputGradient parameter_gradient(const OutputGradient&, double scaler, GradientAccumulator&)
+```
+
+```
+std::pair<InputGradient choice_gradient(const Selection&, const OutputGradient&)
+```
 
 ### ChoiceBuffer
 
-Storage for the values of random choices.
+Stores the values of random choices.
+
+To support MALA and HMC, it must support the following elementwise arithmetic operators: `+`, `-`, `*` with an element of the same type as well as with `double`, `+=`, unary `-`.
 
 ### ChoiceSelection
 
@@ -56,12 +99,17 @@ A change to the input or output of a generative function.
 ### ParameterStore
 
 Storage for parameters that support gradient-based learning.
+They maintain a current value for the parameters and a value for the gradient with respect to the parameters that is used by gradient-based learning algorithms including stochastic gradient descent.
 
 ### ParameterGradientAccumulator
 
-Member functions:
+ParameterGradientAccumulators are constructed from a ParameterStore object.
+Separate ParameterGradientAccumulator objects can be used to accumulate gradients with respect to parameters in parallel.
 
-- `update_gradient`
+The following function accumulates the gradients of the source ParameterStore object (and resets the ParameterGradientAccumulator):
+```
+void update_gradient()
+```
 
 ## Functionality
 
