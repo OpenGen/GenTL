@@ -36,10 +36,12 @@ double mh_accept_prob(double model_log_weight, double proposal_forward_score, do
     return std::min(1.0, std::exp(model_log_weight + proposal_backward_score - proposal_forward_score));
 }
 
+#ifdef __cpp_concepts
 template<typename ModelTrace, typename ProposalTrace>
 concept MHProposalCompatible = requires(ModelTrace trace, ProposalTrace proposal_trace, std::mt19937 rng) {
     { trace.update(rng, gentl::change::no_change, proposal_trace.choices(gentl::selection::all), UpdateOptions()) };
 };
+#endif
 
 template<typename ModelTrace, typename ProposalTrace, typename Proposal,
          typename ProposalParams, typename RNGType>

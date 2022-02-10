@@ -18,7 +18,10 @@ See the License for the specific language governing permissions and
 
 #include <random>
 #include <gentl/concepts.h>
+#include <gentl/types.h>
 #include <gentl/util/mathutils.h>
+
+using gentl::GenerateOptions;
 
 namespace gentl::sir {
 
