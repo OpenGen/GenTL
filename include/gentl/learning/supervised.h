@@ -48,7 +48,7 @@ namespace gentl::sgd {
         double total = 0.0;
         for (const auto& datum : data) {
             auto [model, constraints] = unpack_datum(datum);
-            auto trace_and_log_weight = model.generate(rng, parameters, constraints, false);
+            auto trace_and_log_weight = model.generate(rng, parameters, constraints, GenerateOptions());
             total += trace_and_log_weight.second;
         }
         return total / static_cast<double>(data.size());
@@ -70,10 +70,10 @@ namespace gentl::sgd {
             std::vector<size_t> minibatch = generate_minibatch(rng, data.size(), minibatch_size);
             for (size_t i = 0; i < minibatch_size; i++) {
                 auto [model, constraints] = unpack_datum(data[minibatch[i]]);
-                auto [trace, log_weight] = model.generate(rng, parameters, constraints, true);
+                auto [trace, log_weight] = model.generate(rng, parameters, constraints,
+                                                          GenerateOptions().precompute_gradient(true));
                 const auto& retval = trace->get_return_value();
-                const auto retval_grad = zero_gradient(retval);
-                trace->parameter_gradient(retval_grad, scaler, accum);
+                trace->parameter_gradient(accum, scaler);
             }
             accum.update_module_gradients();
             done = callback(minibatch);
@@ -143,10 +143,10 @@ namespace gentl::sgd {
             while (!done) {
                 for (size_t i = start; i < stop; i++) {
                     auto [model, constraints] = unpack_datum(data[minibatch[i]]);
-                    auto [trace, log_weight] = model.generate(rng, parameters, constraints, true);
+                    auto [trace, log_weight] = model.generate(rng, parameters, constraints,
+                                                              GenerateOptions().precompute_gradient(true));
                     const auto& retval = trace->get_return_value();
-                    const auto retval_grad = zero_gradient(retval);
-                    trace->parameter_gradient(retval_grad, scaler, accum);
+                    trace->parameter_gradient(accum, scaler);
                 }
                 sync_point.arrive_and_wait();
             }
