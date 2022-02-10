@@ -17,30 +17,35 @@ See the License for the specific language governing permissions and
 #define GENTL_SIR_H
 
 #include <random>
+#include <gentl/concepts.h>
 #include <gentl/util/mathutils.h>
 
 namespace gentl::sir {
 
-template <typename TraceType, typename ModelType, typename ParametersType, typename ConstraintsType, typename RNGType>
-std::pair<std::unique_ptr<TraceType>,double> rolling_importance_resampling(
-        const ModelType& model, ParametersType& parameters,
-        const ConstraintsType& constraints, RNGType& rng,
+// TODO allow for non-in-place variant
+template <typename Trace, typename Model, typename Parameters, typename Constraints, typename RNG>
+#ifdef __cpp_concepts
+requires InPlaceGeneratableDistribution<Model, Parameters, Constraints, Trace>
+#endif
+std::pair<std::unique_ptr<Trace>,double> rolling_importance_resampling(
+        const Model& model, Parameters& parameters,
+        const Constraints& constraints, RNG& rng,
         size_t num_particles) {
     if (num_particles == 0)
         throw std::logic_error("num_particles == 0");
-    auto [trace_ptr, log_total_weight] = model.generate(constraints, rng, parameters, false);
+    GenerateOptions options;
+    auto [trace_ptr, log_total_weight] = model.generate(rng, parameters, constraints, options);
     // generate another trace that will be used to generate all future traces in-place
-    auto [candidate_trace_ptr, unused] = model.generate(constraints, rng, parameters, false);
+    auto [candidate_trace_ptr, unused] = model.generate(rng, parameters, constraints, options);
     for (size_t i = 1; i < num_particles; i++) {
         // overwrite candidate trace
-        double log_weight_increment = model.generate(*candidate_trace_ptr, constraints, rng, parameters, false);
+        double log_weight_increment = model.generate(
+                *candidate_trace_ptr, rng, parameters, constraints, options);
         log_total_weight = gentl::mathutils::logsumexp(log_total_weight, log_weight_increment);
         double prob_replace = std::exp(log_weight_increment - log_total_weight);
         std::bernoulli_distribution dist{prob_replace};
-        if (dist(rng)) {
-            // swap the pointers
+        if (dist(rng))
             std::swap(trace_ptr, candidate_trace_ptr);
-        }
     }
     double log_ml_estimate = log_total_weight - std::log(num_particles);
     return {std::move(trace_ptr), log_ml_estimate};

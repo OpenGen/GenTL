@@ -20,12 +20,29 @@ See the License for the specific language governing permissions and
 #include <stdexcept>
 #include <memory>
 #include <array>
+#include <iostream>
 
 #include <Eigen/Dense>
 
 #include <gentl/util/randutils.h>
 #include <gentl/inference/mcmc.h>
 #include <gentl/types.h>
+
+template<typename Iter, typename Val>
+#ifdef __cpp_concepts
+    requires std::input_iterator<Iter>
+#endif
+Iter my_find(Iter b, Iter e, Val v)
+{
+    // ...
+    return b;
+}
+
+void doit() {
+    std::vector<int> vec = {1, 2, 3};
+    auto iter = my_find(vec.begin(), vec.end(), 2);
+    std::cout << *iter << std::endl;
+}
 
 using gentl::SimulateOptions;
 using gentl::UpdateOptions;
@@ -285,6 +302,8 @@ double Trace::update(RNGType&, const gentl::change::NoChange&, const latent_choi
 }
 
 TEST_CASE("smoke test", "[mcmc]") {
+    doit();
+
     size_t hmc_cycles_per_iter = 2;
     size_t mala_cycles_per_iter = 2;
     size_t mh_cycles_per_iter = 2;
@@ -307,10 +326,10 @@ TEST_CASE("smoke test", "[mcmc]") {
 
     cov_t proposal_covariance {{1.0, 0.95},
                                {0.95, 1.0}};
-    Model proposal {mean, proposal_covariance};
 
-    auto make_proposal = [&proposal](const Trace& trace) {
-        return proposal;
+    auto proposal = [mean, proposal_covariance](const Trace& trace) {
+        static Model proposal_distribution {mean, proposal_covariance};
+        return proposal_distribution;
     };
 
     // generate initial trace and choice buffers
@@ -319,7 +338,7 @@ TEST_CASE("smoke test", "[mcmc]") {
                                               GenerateOptions().precompute_gradient(true));
     LatentsSelection hmc_selection;
     LatentsSelection mala_selection;
-    auto proposal_trace = make_proposal(*trace).simulate(rng, parameters, SimulateOptions());
+    auto proposal_trace = proposal(*trace).simulate(rng, parameters, SimulateOptions());
 
     latent_choices_t hmc_momenta_buffer {trace->choices(hmc_selection)}; // copy constructor
     latent_choices_t hmc_values_buffer {trace->choices(hmc_selection)}; // copy constructor
@@ -344,7 +363,7 @@ TEST_CASE("smoke test", "[mcmc]") {
         }
         for (size_t cycle = 0; cycle < mh_cycles_per_iter; cycle++) {
             mh_num_accepted += gentl::mcmc::mh(
-                    *trace, make_proposal, parameters, rng, *proposal_trace, true);
+                    rng, *trace, proposal, parameters, *proposal_trace, true);
         }
     }
 

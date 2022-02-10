@@ -4,6 +4,8 @@ This documentation is a work-in-progress.
 
 ## Concepts
 
+See include/gentl/concepts.h for a formal definition of these concepts.
+
 Using GenTL typically involves defining your own types that adhere to a set of concepts.
 Note that there is no abstract class for each of these concepts in GenTL (i.e. there is no general abstract `Trace` class).
 

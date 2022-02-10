@@ -14,9 +14,12 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <catch2/catch.hpp>
+
+#include <iostream>
+
 #include <gentl/util/randutils.h>
 #include <gentl/inference/sir.h>
-#include <iostream>
+#include <gentl/types.h>
 
 using seed_seq_fe128 = gentl::randutils::seed_seq_fe<4, uint32_t>;
 
@@ -56,19 +59,21 @@ public:
 
     // generate that allocates new trace
     template <typename RNGType>
-    std::pair<std::unique_ptr<Trace>,double> generate(const Constraints& constraints, RNGType& rng, const Parameters&, bool gradients) const {
-        assert(!gradients);
+    std::pair<std::unique_ptr<Trace>,double> generate(RNGType& rng, const Parameters&, const Constraints& constraints,
+                                                      const gentl::GenerateOptions& options) const {
+        assert(!options.precompute_gradient());
         std::bernoulli_distribution x_dist{prob_x};
         bool x = x_dist(rng);
         bool y = constraints.y;
         double log_weight = log_prob_y_given_x(x, y);
-        return {std::make_unique<Trace>(x,y), log_weight};
+        return {std::unique_ptr<Trace>(new Trace{x, y}), log_weight};
     }
 
     // in-place generate
     template <typename RNGType>
-    double generate(Trace& trace, const Constraints& constraints, RNGType& rng, const Parameters&, bool gradients) const {
-        assert(!gradients);
+    double generate(Trace& trace, RNGType& rng, const Parameters&, const Constraints& constraints,
+                    const gentl::GenerateOptions& options) const {
+        assert(!options.precompute_gradient());
         std::bernoulli_distribution x_dist{prob_x};
         trace.x = x_dist(rng);
         double log_weight = log_prob_y_given_x(trace.x, constraints.y);

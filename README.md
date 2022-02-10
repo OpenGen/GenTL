@@ -31,7 +31,7 @@ Use CMake to build and test. Note that you can configure the C++ compiler to use
 ```
 cmake -S . -B build -DCMAKE_CXX_COMPILER=g++-11
 cmake --build build
-cmake --build --target test
+cmake --build build --target test
 ```
 
 ## Generating documentation

@@ -13,7 +13,8 @@ add_executable(testlib
         seed_sequence.cpp
         sir.cpp
         particle_filter.cpp
-        train_supervised.cpp)
+#        train_supervised.cpp
+        )
 
 # I'm using C++17 in the test
 target_compile_features(testlib PRIVATE cxx_std_17)
