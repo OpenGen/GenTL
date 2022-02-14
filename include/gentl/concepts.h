@@ -22,7 +22,7 @@ See the License for the specific language governing permissions and
 
 namespace gentl {
 
-// TODO backward_constraints may need some refinement
+// TODO add backward_constraints
 // TODO the distinction for bound and unbound genreative function may need some refinement
 
 template <typename ChoiceBuffer>
@@ -42,7 +42,7 @@ concept HasScore = requires(Trace trace) {
 
 template <typename Trace>
 concept HasReturnValue = requires(Trace trace) {
-    { trace.return_value() };
+    { trace.retufrn_value() };
 };
 
 template <typename Trace, typename Value>

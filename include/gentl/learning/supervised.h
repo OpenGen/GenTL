@@ -72,7 +72,7 @@ namespace gentl::sgd {
                 auto [model, constraints] = unpack_datum(data[minibatch[i]]);
                 auto [trace, log_weight] = model.generate(rng, parameters, constraints,
                                                           GenerateOptions().precompute_gradient(true));
-                const auto& retval = trace->get_return_value();
+                const auto& retval = trace->return_value();
                 trace->parameter_gradient(accum, scaler);
             }
             accum.update_module_gradients();
@@ -145,7 +145,7 @@ namespace gentl::sgd {
                     auto [model, constraints] = unpack_datum(data[minibatch[i]]);
                     auto [trace, log_weight] = model.generate(rng, parameters, constraints,
                                                               GenerateOptions().precompute_gradient(true));
-                    const auto& retval = trace->get_return_value();
+                    const auto& retval = trace->return_value();
                     trace->parameter_gradient(accum, scaler);
                 }
                 sync_point.arrive_and_wait();

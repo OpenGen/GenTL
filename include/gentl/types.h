@@ -37,9 +37,11 @@ class UpdateOptions {
     bool precompute_gradient_;
     bool save_;
     bool assert_deterministic_;
+    bool ignore_previous_choices_;
 
 public:
-    UpdateOptions() : precompute_gradient_(false), save_(false), assert_deterministic_(false) {}
+    UpdateOptions() : precompute_gradient_(false), save_(false), assert_deterministic_(false),
+    ignore_previous_choices_{false} {}
 
     UpdateOptions& precompute_gradient(bool value) {
         precompute_gradient_ = value;
@@ -56,9 +58,19 @@ public:
         return *this;
     }
 
+    UpdateOptions& ignore_previous_choices(bool value) {
+        ignore_previous_choices_ = value;
+        return *this;
+    }
+
     [[nodiscard]] bool precompute_gradient() const { return precompute_gradient_; }
     [[nodiscard]] bool save() const { return save_; }
     [[nodiscard]] bool assert_deterministic() const { return assert_deterministic_; }
+
+    // acts like an in-place generate
+    // TODO remove the in-place generate function, and similarly for simulate?
+    [[nodiscard]] bool ignore_previous_choices() const { return ignore_previous_choices_; }
+
 };
 
 }
