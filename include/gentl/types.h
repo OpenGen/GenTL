@@ -97,7 +97,7 @@ class UnknownChange {
 public:
     explicit UnknownChange(const ValueType& new_value) : new_value_{new_value} {}
     explicit UnknownChange(ValueType&& new_value) : new_value_{std::move(new_value)} {}
-    const ValueType& new_value() { return new_value_; }
+    const ValueType& new_value() const { return new_value_; }
 };
 
 }

@@ -19,6 +19,7 @@ See the License for the specific language governing permissions and
 #ifdef __cpp_concepts
 
 #include <gentl/types.h>
+#include <random>
 
 namespace gentl {
 
