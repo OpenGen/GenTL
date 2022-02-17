@@ -3,7 +3,7 @@
 
 [![status](https://github.com/OpenGen/GenTL/actions/workflows/test.yml/badge.svg)](https://github.com/OpenGen/GenTL/actions?query=workflow/test)
 
-[**Documentation**](https://opengen.github.io/gentl-docs/latest/)
+[**Documentation (work-in-progress)**](https://opengen.github.io/gentl-docs/latest/)
 
 This is currently a header-only library, and the source code consists of `.h` files under `include/gentl/`.
 
