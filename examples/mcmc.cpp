@@ -1,19 +1,6 @@
-/* Copyright 2021-2022 Massachusetts Institute of Technology
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-        limitations under the License.
-==============================================================================*/
-
-#include <catch2/catch.hpp>
+#include <gentl/inference/mcmc.h>
+#include <gentl/util/randutils.h>
+#include <gentl/types.h>
 
 #include <utility>
 #include <vector>
@@ -24,32 +11,13 @@ See the License for the specific language governing permissions and
 
 #include <Eigen/Dense>
 
-#include <gentl/util/randutils.h>
-#include <gentl/inference/mcmc.h>
-#include <gentl/types.h>
-
-template<typename Iter, typename Val>
-#ifdef __cpp_concepts
-    requires std::input_iterator<Iter>
-#endif
-Iter my_find(Iter b, Iter e, Val v)
-{
-    // ...
-    return b;
-}
-
-void doit() {
-    std::vector<int> vec = {1, 2, 3};
-    auto iter = my_find(vec.begin(), vec.end(), 2);
-    std::cout << *iter << std::endl;
-}
-
-using gentl::SimulateOptions;
-using gentl::UpdateOptions;
-using gentl::GenerateOptions;
 
 // TODO support parameters
 // TODO support subset of addresses
+
+using gentl::SimulateOptions;
+using gentl::GenerateOptions;
+using gentl::UpdateOptions;
 
 // ****************************
 // *** Model implementation ***
@@ -69,15 +37,28 @@ class EmptyChoiceBuffer {};
 
 typedef Eigen::Array<double,latent_dimension,1> latent_choices_t;
 
-// learnable parameters (there are none)
+// model change types
 
-class Parameters {};
+struct ModelChange {
+    mean_t new_mean;
+    cov_t new_cov;
+};
 
-// Trace and Model
+// return value change types
+
+class RetvalChange {};
+
+// learnable parameters
+
+class Parameters { };
+class GradientAccumulator { };
+
+
 
 class Trace;
 
 class Model {
+    typedef int return_type;
     friend class Trace;
 
 private:
@@ -124,31 +105,34 @@ public:
 
     // simulate into a new trace object
     template <typename RNGType>
-    std::unique_ptr<Trace> simulate(RNGType& rng, Parameters& parameters, const SimulateOptions& options) const;
+    std::unique_ptr<Trace> simulate(RNGType& rng, Parameters& parameters, const SimulateOptions&) const;
 
     // simulate into an existing trace object (overwriting existing contents)
     template <typename RNGType>
-    void simulate(RNGType& rng, Parameters& parameters, const SimulateOptions& options, Trace& trace) const;
+    void simulate(RNGType& rng, Parameters& parameters, const SimulateOptions&, Trace& trace) const;
 
     // generate into a new trace object
     template <typename RNGType>
-    std::pair<std::unique_ptr<Trace>,double> generate(RNGType& rng, Parameters& parameters,
-                                                      const EmptyChoiceBuffer& constraints,
-                                                      const GenerateOptions& options) const;
+    std::pair<std::unique_ptr<Trace>,double> generate(const EmptyChoiceBuffer& constraints, RNGType& rng,
+                                                      Parameters& parameters, const GenerateOptions&) const;
 
     // generate into an existing trace object (overwriting existing contents)
     template <typename RNGType>
-    double generate(RNGType& rng, Parameters& parameters, const EmptyChoiceBuffer& constraints,
-                    const GenerateOptions& options, Trace& trace) const;
+    double generate(Trace& trace, const EmptyChoiceBuffer& constraints,
+                    RNGType& rng, Parameters& parameters, const GenerateOptions&) const;
 
     // equivalent to generate but without returning a trace
-    template <typename RNGType>
-    std::pair<int, double> assess(RNGType& rng, Parameters& parameters, const latent_choices_t& constraints) const;
+
+    template <typename RNG>
+    std::pair<int, double> assess(RNG&, Parameters&, const latent_choices_t& constraints) const;
+
+    template <typename RNG>
+    std::pair<int, double> assess(RNG&, Parameters&, const EmptyChoiceBuffer& constraints) const;
+
 };
 
 class Trace {
     friend class Model;
-    typedef int return_type;
 private:
     Model model_;
     double score_;
@@ -157,6 +141,7 @@ private:
     latent_choices_t latent_gradient_;
     bool can_be_reverted_;
     bool gradients_computed_;
+    RetvalChange diff_;
 private:
     // initialize trace without precomputed gradient
     Trace(Model model, double score, latent_choices_t&& latents) :
@@ -175,12 +160,12 @@ public:
 
     [[nodiscard]] double score() const;
     [[nodiscard]] const latent_choices_t& choices() const;
-    [[nodiscard]] const latent_choices_t& choices(const gentl::selection::All&) const;
     [[nodiscard]] const latent_choices_t& choices(const LatentsSelection& selection) const;
     const latent_choices_t& choice_gradient(const LatentsSelection& selection);
     template <typename RNG>
     double update(RNG&, const gentl::change::NoChange&, const latent_choices_t& constraints, const UpdateOptions& options);
     const latent_choices_t& backward_constraints();
+
     void revert();
 };
 
@@ -209,15 +194,16 @@ template <typename RNGType>
 void Model::simulate(RNGType& rng, Parameters& parameters, const SimulateOptions& options, Trace& trace) const {
     exact_sample(trace.latents_, rng);
     trace.score_ = logpdf(trace.latents_);
-    if ((trace.gradients_computed_ = options.precompute_gradient()))
+    if (options.precompute_gradient()) {
         logpdf_grad(trace.latent_gradient_, trace.latents_);
+    }
+    trace.gradients_computed_ = options.precompute_gradient();
     trace.can_be_reverted_ = false;
 }
 
 template <typename RNGType>
-std::pair<std::unique_ptr<Trace>,double> Model::generate(
-        RNGType& rng, Parameters& parameters, const EmptyChoiceBuffer& constraints,
-        const GenerateOptions& options) const {
+std::pair<std::unique_ptr<Trace>,double> Model::generate(const EmptyChoiceBuffer& constraints, RNGType& rng,
+                                                         Parameters& parameters, const GenerateOptions& options) const {
     latent_choices_t latents;
     auto [log_density, log_weight] = importance_sample(latents, rng);
     std::unique_ptr<Trace> trace = nullptr;
@@ -232,22 +218,28 @@ std::pair<std::unique_ptr<Trace>,double> Model::generate(
 }
 
 template <typename RNGType>
-double Model::generate(
-        RNGType& rng, Parameters& parameters, const EmptyChoiceBuffer& constraints,
-        const GenerateOptions& options, Trace& trace) const {
+double Model::generate(Trace& trace, const EmptyChoiceBuffer& constraints, RNGType& rng, Parameters& parameters,
+                       const GenerateOptions& options) const {
     trace.model_ = *this;
     auto [log_density, log_weight] = importance_sample(trace.latents_, rng);
     trace.score_ = log_density;
     double score = logpdf(trace.latents_);
-    if ((trace.gradients_computed_ = options.precompute_gradient()))
+    if (options.precompute_gradient()) {
         logpdf_grad(trace.latent_gradient_, trace.latents_);
+    }
+    trace.gradients_computed_ = options.precompute_gradient();
     trace.can_be_reverted_ = false;
     return log_weight;
 }
 
-template <typename RNGType>
-std::pair<int, double> Model::assess(RNGType& rng, Parameters& parameters, const latent_choices_t& constraints) const {
+template <typename RNG>
+std::pair<int, double> Model::assess(RNG&, Parameters& parameters, const latent_choices_t& constraints) const {
     return {-1, logpdf(constraints)};
+}
+
+template <typename RNG>
+std::pair<int, double> Model::assess(RNG&, Parameters& parameters, const EmptyChoiceBuffer& constraints) const {
+    return {-1, 0.0};
 }
 
 // ****************************
@@ -262,16 +254,8 @@ const latent_choices_t& Trace::choices(const LatentsSelection& selection) const 
     return latents_;
 }
 
-const latent_choices_t& Trace::choices(const gentl::selection::All&) const {
-    return latents_;
-}
-
 const latent_choices_t& Trace::choices() const {
     return latents_;
-}
-
-const latent_choices_t& Trace::backward_constraints() {
-    return alternate_latents_;
 }
 
 void Trace::revert() {
@@ -282,44 +266,103 @@ void Trace::revert() {
     gradients_computed_ = false;
 }
 
+
+const latent_choices_t& Trace::backward_constraints() {
+    return alternate_latents_;
+}
+
 const latent_choices_t& Trace::choice_gradient(const LatentsSelection& selection) {
-    if (!gradients_computed_)
+    if (!gradients_computed_) {
         model_.logpdf_grad(latent_gradient_, latents_);
+    }
     gradients_computed_ = true;
     return  latent_gradient_;
 }
 
-template <typename RNGType>
-double Trace::update(RNGType&, const gentl::change::NoChange&, const latent_choices_t& constraints,
-                     const UpdateOptions& options) {
+template <typename RNG>
+double Trace::update(RNG&, const gentl::change::NoChange&, const latent_choices_t& latents, const UpdateOptions& options) {
     if (options.save()) {
         std::swap(latents_, alternate_latents_);
+        latents_ = latents; // copy assignment
         can_be_reverted_ = true;
     } else {
+        latents_ = latents; // copy assignment
         // can_be_reverted_ keeps its previous value
     };
-    latents_ = constraints; // copy assignment
     double new_log_density = model_.logpdf(latents_);
     double log_weight = new_log_density - score_;
     score_ = new_log_density;
-    if ((gradients_computed_ = options.precompute_gradient()))
+    if (options.precompute_gradient()) {
         model_.logpdf_grad(latent_gradient_, latents_);
+    }
+    gradients_computed_ = options.precompute_gradient();
     return log_weight;
 }
 
-TEST_CASE("smoke test", "[mcmc]") {
-    doit();
+// TODO add implementation of update that accepts a change to the model
 
-    size_t hmc_cycles_per_iter = 2;
-    size_t mala_cycles_per_iter = 2;
-    size_t mh_cycles_per_iter = 2;
-    size_t hmc_leapfrog_steps = 2;
-    double hmc_eps = 0.01;
-    double mala_tau = 0.01;
-    size_t num_iters = 1000;
-    uint32_t seed = 0;
+
+// *********************
+// *** Example usage ***
+// *********************
+
+
+int main(int argc, char* argv[]) {
+    using std::cout;
+    using std::endl;
+    using std::cerr;
+
+    // TODO test multiple threads
+
+    // parse arguments
+
+    static const std::string usage = "Usage: ./mcmc"
+                                     "<hmc_cycles_per_iter>"
+                                     "<mala_cycles_per_iter>"
+                                     "<mh_cycles_per_iter>"
+                                     "<hmc_leapfrog_steps>"
+                                     "<hmc_eps>"
+                                     "<mala_tau>"
+                                     "<num_threads>"
+                                     "<num_iters>"
+                                     "<seed>";
+    if (argc != 10) {
+        throw std::invalid_argument(usage);
+    }
+    size_t hmc_cycles_per_iter;
+    size_t mala_cycles_per_iter;
+    size_t mh_cycles_per_iter;
+    size_t hmc_leapfrog_steps;
+    double hmc_eps;
+    double mala_tau;
+    size_t num_threads;
+    size_t num_iters;
+    uint32_t seed;
+    try {
+        hmc_cycles_per_iter = std::atoi(argv[1]);
+        mala_cycles_per_iter = std::atoi(argv[2]);
+        mh_cycles_per_iter = std::atoi(argv[3]);
+        hmc_leapfrog_steps = std::atoi(argv[4]);
+        hmc_eps = std::atof(argv[5]);
+        mala_tau = std::atof(argv[6]);
+        num_threads = std::atoi(argv[7]);
+        num_iters = std::atoi(argv[8]);
+        seed = std::atoi(argv[9]);
+    } catch (const std::invalid_argument& e) {
+        throw std::invalid_argument(usage);
+    }
+    cerr << "hmc_cycles_per_iter: " << hmc_cycles_per_iter << endl;
+    cerr << "mala_cycles_per_iter: " << mala_cycles_per_iter << endl;
+    cerr << "mh_cycles_per_iter: " << mh_cycles_per_iter << endl;
+    cerr << "hmc_leapfrog_steps: " << hmc_leapfrog_steps << endl;
+    cerr << "hmc_eps: " << hmc_eps << endl;
+    cerr << "mala_tau: " << mala_tau << endl;
+    cerr << "num_threads: " << num_threads << endl;
+    cerr << "num_iters: " << num_iters << endl;
+    cerr << "seed: " << seed << endl;
 
     // initialize RNG
+
     gentl::randutils::seed_seq_fe128 seed_seq {seed};
     std::mt19937 rng(seed_seq);
 
@@ -330,21 +373,20 @@ TEST_CASE("smoke test", "[mcmc]") {
                              {0.95, 1.0}};
     Model model {mean, target_covariance};
 
-    cov_t proposal_covariance {{1.0, 0.95},
-                               {0.95, 1.0}};
+    cov_t proposal_covariance {{1.0, 0.0},
+                               {0.0, 1.0}};
+    Model proposal {mean, proposal_covariance};
 
-    auto proposal = [mean, proposal_covariance](const Trace& trace) {
-        static Model proposal_distribution {mean, proposal_covariance};
-        return proposal_distribution;
+    auto make_proposal = [&proposal](const Trace& trace) {
+        return proposal;
     };
 
     // generate initial trace and choice buffers
-    Parameters parameters {};
-    auto [trace, log_weight] = model.generate(rng, parameters, EmptyChoiceBuffer{},
-                                              GenerateOptions().precompute_gradient(true));
+    Parameters unused {};
+    auto [trace, log_weight] = model.generate(EmptyChoiceBuffer{}, rng, unused, GenerateOptions().precompute_gradient(true));
     LatentsSelection hmc_selection;
     LatentsSelection mala_selection;
-    auto proposal_trace = proposal(*trace).simulate(rng, parameters, SimulateOptions());
+    auto proposal_trace = make_proposal(*trace).simulate(rng, unused, SimulateOptions().precompute_gradient(false));
 
     latent_choices_t hmc_momenta_buffer {trace->choices(hmc_selection)}; // copy constructor
     latent_choices_t hmc_values_buffer {trace->choices(hmc_selection)}; // copy constructor
@@ -369,18 +411,15 @@ TEST_CASE("smoke test", "[mcmc]") {
         }
         for (size_t cycle = 0; cycle < mh_cycles_per_iter; cycle++) {
             mh_num_accepted += gentl::mcmc::mh(
-                    rng, *trace, proposal, parameters, *proposal_trace, true);
+                    rng, *trace, make_proposal, unused, *proposal_trace, true);
         }
     }
 
-    double hmc_accept_rate = static_cast<double>(hmc_num_accepted) / static_cast<double>(num_iters * hmc_cycles_per_iter);
-    double mala_accept_rate = static_cast<double>(mala_num_accepted) / static_cast<double>(num_iters * mala_cycles_per_iter);
-    double mh_accept_rate = static_cast<double>(mh_num_accepted) / static_cast<double>(num_iters * mh_cycles_per_iter);
+    cerr << "hmc acceptance rate: " << static_cast<double>(hmc_num_accepted) / static_cast<double>(num_iters * hmc_cycles_per_iter) << endl;
+    cerr << "mala acceptance rate: " << static_cast<double>(mala_num_accepted) / static_cast<double>(num_iters * mala_cycles_per_iter) << endl;
+    cerr << "mh acceptance rate: " << static_cast<double>(mh_num_accepted) / static_cast<double>(num_iters * mh_cycles_per_iter) << endl;
 
-    REQUIRE(hmc_accept_rate > 0.0);
-    REQUIRE(hmc_accept_rate < 1.0);
-    REQUIRE(mala_accept_rate > 0.0);
-    REQUIRE(mala_accept_rate < 1.0);
-    REQUIRE(mh_accept_rate > 0.95); // TODO it rarely rejects; should be 1.0
+    for (const auto& x : history)
+        cout << x(0) << "," << x(1) << endl;
 
 }

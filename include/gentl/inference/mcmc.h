@@ -28,18 +28,65 @@ using gentl::UpdateOptions;
 namespace gentl::mcmc {
 
 
-// ***********************************************************************
-// *** Metropolis-Hastings using a generative function as the proposal ***
-// ***********************************************************************
 
 double mh_accept_prob(double model_log_weight, double proposal_forward_score, double proposal_backward_score) {
     return std::min(1.0, std::exp(model_log_weight + proposal_backward_score - proposal_forward_score));
 }
 
+// ***********************
+// *** Involutive MCMC ***
+// ***********************
+
+template<typename ProposalTrace, typename ModelTrace, typename Proposal, typename ProposalParams,
+         typename Involution, typename RNG>
+bool involutive_mcmc(RNG& rng, ModelTrace& trace, const Proposal& proposal, const ProposalParams& params,
+                     const Involution& involution, bool round_trip_check = false) {
+    // TODO add version that does simulation in-place (and accepts a ProposalTrace argument)
+    auto forward_proposal_trace = proposal(trace).simulate(rng, params, SimulateOptions());
+    auto forward_proposal_choices = forward_proposal_trace.choices();
+    double forward_proposal_score = forward_proposal_trace.score();
+    std::unique_ptr<ModelTrace> original_trace = nullptr;
+    if (round_trip_check) {
+        original_trace = trace.fork();
+    }
+    // NOTE: involution must save, so it can be reverted
+    auto [backward_proposal_choices, model_log_weight] = involution(trace, forward_proposal_choices);
+    auto [retval, backward_proposal_score] = proposal(trace).assess(rng, params);
+    double prob_accept = mh_accept_prob(model_log_weight, forward_proposal_score, backward_proposal_score);
+    bool accept = std::bernoulli_distribution{prob_accept}(rng);
+    if (round_trip_check) {
+        auto [forward_proposal_choices_rt, model_log_weight_rt] = involution(trace, backward_proposal_choices);
+        // TODO check that forward_proposal_choices_rt matches forward_proposal_choices (NOTE this is not possible if the value type in the choice map is std::any; should we have users use std::variant instead?)
+        // TODO check that trace.choices() matches original_trace->choices()
+        // TODO check that model_log_weight_rt = -model_log_weight
+        if (accept)
+            trace.revert();
+    } else {
+        if (!accept)
+            trace.revert();
+    }
+    return accept;
+
+    // TODO what is the implementation oft he transform? Just a lambda function that takes
+    // (model_trace, constraints) -> pair<constraints, double>
+    // can we provide basic implemntation for the case when Jacobian is 1? i.e. when we just arte changing the address of choices or changing discrete choices?
+    // we can provide an implementation when the jacobian is 1 that works for ChoiceTrie:
+    // 1. a user function that takes the forward constraints, and the choices() from the trace, and the return value (?)
+    // and returns a new choice trie (that represents constraints to be passed to update), and a backward constraints
+    // then, the backward constraints from update are merged with their backwrad constraints
+    // there are separate namespaces ("model" and "propsoal")
+}
+
+
+// ***********************************************************************
+// *** Metropolis-Hastings using a generative function as the proposal ***
+// ***********************************************************************
+
+
 #ifdef __cpp_concepts
 template<typename ModelTrace, typename ProposalTrace>
 concept MHProposalCompatible = requires(ModelTrace trace, ProposalTrace proposal_trace, std::mt19937 rng) {
-    { trace.update(rng, gentl::change::no_change, proposal_trace.choices(gentl::selection::all), UpdateOptions()) };
+    { trace.update(rng, gentl::change::no_change, proposal_trace.choices(), UpdateOptions()) };
 };
 #endif
 
@@ -47,7 +94,7 @@ template<typename ModelTrace, typename ProposalTrace, typename Proposal,
          typename ProposalParams, typename RNGType>
 #ifdef __cpp_concepts
 requires
-    SimulatableGenerativeFunction<Proposal,ModelTrace,ProposalParams,ProposalTrace> &&
+    InPlaceSimulatableGenerativeFunction<Proposal,ModelTrace,ProposalParams,ProposalTrace> &&
     MHProposalCompatible<ModelTrace, ProposalTrace> &&
     Revertible<ModelTrace>
 #endif
@@ -56,13 +103,39 @@ bool mh(RNGType &rng, ModelTrace &model_trace,
         bool precompute_gradient = false) {
     proposal(model_trace).simulate(rng, proposal_params, SimulateOptions(), proposal_trace);
     double proposal_forward_score = proposal_trace.score();
-    const auto &forward_constraints = proposal_trace.choices(gentl::selection::all);
+    const auto &forward_constraints = proposal_trace.choices();
     double model_log_weight = model_trace.update(
             rng, gentl::change::no_change,
             forward_constraints,
             UpdateOptions().save(true).precompute_gradient(precompute_gradient));
     const auto& backward_constraints = model_trace.backward_constraints();
-    auto proposal_backward_score = proposal(model_trace).assess(rng, proposal_params, backward_constraints);
+    auto [proposal_retval, proposal_backward_score] = proposal(model_trace).assess(rng, proposal_params, backward_constraints);
+    double prob_accept = mh_accept_prob(model_log_weight, proposal_forward_score, proposal_backward_score);
+    bool accept = std::bernoulli_distribution{prob_accept}(rng);
+    if (!accept)
+        model_trace.revert();
+    return accept;
+}
+
+template<typename ProposalTrace, typename ModelTrace, typename Proposal, typename ProposalParams, typename RNGType>
+#ifdef __cpp_concepts
+requires
+SimulatableGenerativeFunction<Proposal,ModelTrace,ProposalParams,ProposalTrace> &&
+MHProposalCompatible<ModelTrace, ProposalTrace> &&
+Revertible<ModelTrace>
+#endif
+bool mh(RNGType &rng, ModelTrace &model_trace,
+        const Proposal &proposal, ProposalParams &proposal_params,
+        bool precompute_gradient = false) {
+    auto proposal_trace = proposal(model_trace).simulate(rng, proposal_params, SimulateOptions());
+    double proposal_forward_score = proposal_trace->score();
+    const auto &forward_constraints = proposal_trace->choices();
+    double model_log_weight = model_trace.update(
+            rng, gentl::change::no_change,
+            forward_constraints,
+            UpdateOptions().save(true).precompute_gradient(precompute_gradient));
+    const auto& backward_constraints = model_trace.backward_constraints();
+    auto [proposal_retval, proposal_backward_score] = proposal(model_trace).assess(rng, proposal_params, backward_constraints);
     double prob_accept = mh_accept_prob(model_log_weight, proposal_forward_score, proposal_backward_score);
     bool accept = std::bernoulli_distribution{prob_accept}(rng);
     if (!accept)

@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 
 #include <gentl/types.h>
 #include <random>
+#include <memory>
 
 namespace gentl {
 
@@ -65,6 +66,7 @@ template <typename Trace>
 concept Forkable = requires(Trace trace) {
     { trace.fork() } -> std::same_as<std::unique_ptr<Trace>>;
 };
+
 
 template <typename Trace, typename GradientAccumulator>
 concept HasNonCompositionalParameterGradient = requires(Trace trace, GradientAccumulator accum) {
@@ -136,10 +138,24 @@ concept GeneratableGenerativeFunction =
           { fn(input).generate(rng, store, constraint, GenerateOptions()) } -> std::same_as<std::pair<std::unique_ptr<Trace>,double>>;
       };
 
+template <typename GenFn, typename Input, typename ParameterStore, typename Constraint> 
+concept AssessableGenerativeFunction =
+      requires(GenFn fn, Input input, std::mt19937 rng, ParameterStore store, Constraint constraint) {
+          { fn(input).assess(rng, store, constraint) } -> std::same_as<std::pair<typename GenFn::return_type, double>>;
+      };
+
+
+// TODO replace this with update variant:
 template <typename GenFn, typename Input, typename ParameterStore, typename Trace, typename Constraint>
 concept InPlaceGeneratableGenerativeFunction =
 requires(GenFn fn, Input input, std::mt19937 rng, ParameterStore store, Constraint constraint, Trace trace) {
     { fn(input).generate(trace, rng, store, constraint, GenerateOptions()) } -> std::same_as<double>;
+};
+
+template <typename GenFn, typename Input, typename ParameterStore, typename Trace>
+concept InPlaceSimulatableGenerativeFunction =
+requires(GenFn fn, Input input, std::mt19937 rng, ParameterStore store, Trace trace) {
+    { fn(input).simulate(rng, store, SimulateOptions(), trace) };
 };
 
 

@@ -1,5 +1,3 @@
-#include <gen/still/mcmc.h>
-
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -8,8 +6,14 @@
 #include <vector>
 #include <stdexcept>
 #include <array>
-#include <gentl/randutils.h>
-#include <gentl/particle_filter.h>
+
+#include <gentl/types.h>
+#include <gentl/util/randutils.h>
+#include <gentl/inference/particle_filter.h>
+
+using gentl::SimulateOptions;
+using gentl::GenerateOptions;
+using gentl::UpdateOptions;
 
 // TODO update needs to take an RNG
 // TODO implement a version that uses Immer and supports rejuvenation without copying entire histories
@@ -60,7 +64,7 @@ class ExtendByOneTimeStep {};
 
 // parameters
 
-// TODO learn the parameters using gen/still/sgd.h within an EM algorithm....
+// TODO learn the parameters using gentl/learning/supervised.h within an EM algorithm....
 
 struct Parameters {
     double measurement_noise;
@@ -95,11 +99,12 @@ public:
     explicit Model(size_t num_time_steps) : num_time_steps_{num_time_steps} {}
 
     template <typename RNGType>
-    Trace simulate(RNGType& rng, Parameters& parameters, bool prepare_for_gradient) const;
+    std::unique_ptr<Trace> simulate(RNGType& rng, Parameters& parameters, const SimulateOptions& options) const;
 
     template <typename RNGType>
-    std::pair<std::unique_ptr<Trace>,double> generate(const NextTimeStepObservations& constraints, RNGType& rng,
-                                                      Parameters& parameters, bool prepare_for_gradient) const;
+    std::pair<std::unique_ptr<Trace>,double> generate(RNGType& rng, Parameters& parameters,
+                                                      const NextTimeStepObservations& constraints,
+                                                      const GenerateOptions& options) const;
 
     // NOT implemented:
     // 1. simulate in-place
@@ -123,14 +128,14 @@ public:
     Trace& operator=(Trace&& other) noexcept = delete;
 
     template <typename RNGType>
-    std::tuple<double,const EmptyConstraints&,const RetDiff&> update(
+    double update(
             RNGType& rng, const ExtendByOneTimeStep& model_change, const NextTimeStepObservations& constraints,
-            bool save_previous, bool prepare_for_gradient);
+            const UpdateOptions&);
 
     template <typename RNGType>
-    std::tuple<double,const EmptyConstraints&,const RetDiff&> update(
+    double update(
             RNGType& rng, const ExtendByOneTimeStep& model_change, const EmptyConstraints& constraints,
-            bool save_previous, bool prepare_for_gradient);
+            const UpdateOptions&);
 
     [[nodiscard]] State state(size_t i) const {
         return states_[i];
@@ -216,7 +221,9 @@ State extend_without_observation(const Parameters& parameters, const State& stat
 }
 
 template <typename RNGType>
-Trace Model::simulate(RNGType& rng, Parameters& parameters, bool prepare_for_gradient) const {
+std::unique_ptr<Trace> Model::simulate(RNGType& rng, Parameters& parameters, const SimulateOptions& options) const {
+    if (options.precompute_gradient())
+        throw std::logic_error("prepare_for_gradient in update not implemented");
     auto [new_x, new_y, new_vx, new_vy] = sample_init_prior(parameters, rng);
     std::vector<State> states(num_time_steps_);
     double new_measured_bearing = sample_observation_prior(new_x, new_y, parameters, rng);
@@ -226,17 +233,16 @@ Trace Model::simulate(RNGType& rng, Parameters& parameters, bool prepare_for_gra
         new_measured_bearing = sample_observation_prior(new_x, new_y, parameters, rng);
         states[i] = {new_x, new_y, new_vx, new_vy, new_measured_bearing};
     }
-    return Trace{*this, parameters, states};
+    return std::unique_ptr<Trace>(new Trace(*this, parameters, states));
 }
 
 
 template <typename RNGType>
-std::pair<std::unique_ptr<Trace>,double> Model::generate(const NextTimeStepObservations& constraints, RNGType& rng,
-                                                         Parameters& parameters, bool prepare_for_gradient) const {
-    if (prepare_for_gradient)
-        throw std::logic_error("prepare_for_gradient in generate not implemented");
-    if (num_time_steps_ != 0)
-        throw std::logic_error("generate not implemented for num_time_steps != 0");
+std::pair<std::unique_ptr<Trace>,double> Model::generate(RNGType& rng, Parameters& parameters,
+                                                         const NextTimeStepObservations& constraints,
+                                                         const GenerateOptions& options) const {
+    if (options.precompute_gradient())
+        throw std::logic_error("prepare_for_gradient in update not implemented");
     // sample initial x, y, vx, vy from the prior and compute importance weight
     auto [state, log_weight] = initial_importance_sample(parameters, constraints.measured_bearing, rng);
     auto trace = std::unique_ptr<Trace>(new Trace(*this, parameters, {state}));
@@ -244,30 +250,30 @@ std::pair<std::unique_ptr<Trace>,double> Model::generate(const NextTimeStepObser
 }
 
 template <typename RNGType>
-std::tuple<double,const EmptyConstraints&,const RetDiff&> Trace::update(
+double Trace::update(
         RNGType& rng, const ExtendByOneTimeStep& model_change, const NextTimeStepObservations& constraints,
-        bool save_previous, bool prepare_for_gradient) {
-    if (prepare_for_gradient)
+        const UpdateOptions& options) {
+    if (options.precompute_gradient())
         throw std::logic_error("prepare_for_gradient in update not implemented");
-    if (save_previous)
+    if (options.save())
         throw std::logic_error("save_previous in update not implemented");
     auto [new_state, log_weight] = incremental_importance_sample(
             *parameters_, constraints.measured_bearing, states_.back(), rng);
     states_.emplace_back(new_state);
-    return {log_weight, empty_constraints, ret_diff};
+    return log_weight;
 }
 
 template <typename RNGType>
-std::tuple<double,const EmptyConstraints&,const RetDiff&> Trace::update(
+double Trace::update(
         RNGType& rng, const ExtendByOneTimeStep& model_change, const EmptyConstraints& constraints,
-        bool save_previous, bool prepare_for_gradient) {
-    if (prepare_for_gradient)
+        const UpdateOptions& options) {
+    if (options.precompute_gradient())
         throw std::logic_error("prepare_for_gradient in update not implemented");
-    if (save_previous)
+    if (options.save())
         throw std::logic_error("save_previous in update not implemented");
     auto new_state = extend_without_observation(*parameters_, states_.back(), rng);
     states_.emplace_back(new_state);
-    return {0.0, empty_constraints, ret_diff};
+    return 0.0;
 }
 
 void Trace::revert() {
@@ -299,25 +305,25 @@ int main(int argc, char* argv[]) {
 
     size_t num_time_steps = 50;
 
-    randutils::seed_seq_fe128 seed_seq {1};
+    gentl::randutils::seed_seq_fe128 seed_seq {1};
     std::mt19937 rng(seed_seq);
 
     // simulate data
     Model simulated_data_model{num_time_steps};
-    Trace simulated_trace = simulated_data_model.simulate(rng, parameters, false);
+    auto simulated_trace = simulated_data_model.simulate(rng, parameters, SimulateOptions());
 
     // create constraints
     std::vector<NextTimeStepObservations> observations;
     for (size_t i = 0; i < num_time_steps; i++)
-        observations.emplace_back(simulated_trace.state(i).measured_bearing);
+        observations.emplace_back(simulated_trace->state(i).measured_bearing);
 
     // Actual model (initialize with zero time steps)
     Model model{};
 
     // run the particle filter
     size_t num_particles = 100;
-    gen::still::smc::ParticleSystem<Trace,std::mt19937> particle_filter{model, parameters, observations[0],
-                                                                        num_particles, rng};
+    gentl::smc::ParticleSystem<Trace,std::mt19937> particle_filter{num_particles, rng};
+    particle_filter.init_step(model, parameters, observations[0]);
     for (size_t i = 1; i < num_time_steps; i++) {
         particle_filter.step(ExtendByOneTimeStep{}, observations[i]);
         double ess = particle_filter.effective_sample_size();
@@ -329,7 +335,7 @@ int main(int argc, char* argv[]) {
     // print out ground truth results
     std::ofstream ground_truth_fs ("pf_plots/ground_truth.csv", std::ofstream::out);
     for (size_t i = 0; i < num_time_steps; i++)
-        ground_truth_fs << simulated_trace.state(i) << endl;
+        ground_truth_fs << simulated_trace->state(i) << endl;
 
     // print out inferred traces
     size_t idx = 0;

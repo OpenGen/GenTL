@@ -44,4 +44,9 @@ jobs:
 
     - name: Test
       run: cmake --build ${{github.workspace}}/build --target test
+
+    - name: Run Examples
+      run: |
+        ${{github.workspace}}/build/examples/particle_filter
+        ${{github.workspace}}/build/examples/mcmc 10 10 10 10 0.1 0.1 10 10 10
     

@@ -23,6 +23,8 @@ See the License for the specific language governing permissions and
 #include <barrier> // NOTE: requires C++20 or c++17 with experimental (consider using boost version or re-implementing)
 
 #include <gentl/util/chunks.h>
+#include <gentl/types.h>
+#include <gentl/concepts.h>
 
 // TODO implement BBVI and VIMCO...
 // TODO implement various learning algorithms like RWS
@@ -72,7 +74,7 @@ namespace gentl::sgd {
                 auto [model, constraints] = unpack_datum(data[minibatch[i]]);
                 auto [trace, log_weight] = model.generate(rng, parameters, constraints,
                                                           GenerateOptions().precompute_gradient(true));
-                const auto& retval = trace->return_value();
+                //const auto& retval = trace->return_value();
                 trace->parameter_gradient(accum, scaler);
             }
             accum.update_module_gradients();
@@ -145,7 +147,7 @@ namespace gentl::sgd {
                     auto [model, constraints] = unpack_datum(data[minibatch[i]]);
                     auto [trace, log_weight] = model.generate(rng, parameters, constraints,
                                                               GenerateOptions().precompute_gradient(true));
-                    const auto& retval = trace->return_value();
+                    //const auto& retval = trace->return_value();
                     trace->parameter_gradient(accum, scaler);
                 }
                 sync_point.arrive_and_wait();

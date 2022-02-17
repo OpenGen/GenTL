@@ -109,13 +109,12 @@ private:
     Trace(double x, double y, const Parameters& parameters, double m_grad, double b_grad, double x_grad) :
             x_(x), y_(y), m_(parameters.m()), b_(parameters.b()), m_grad_(m_grad), b_grad_(b_grad), x_grad_(x_grad) {}
 public:
-    double parameter_gradient(Nothing, double scaler, GradientAccumulator& accumulator) {
+    void parameter_gradient(GradientAccumulator& accumulator, double scaler) {
         std::tie(m_grad_, b_grad_, x_grad_) = logpdf_gradient(x_, y_, m_, b_);
         accumulator.add_m_grad(m_grad_ * scaler);
         accumulator.add_b_grad(b_grad_ * scaler);
-        return x_grad_;
     }
-    [[nodiscard]] Nothing get_return_value() const { return nothing; }
+    [[nodiscard]] Nothing return_value() const { return nothing; }
 };
 
 class Model {
@@ -124,10 +123,11 @@ public:
     explicit Model(Input input) : x(input.x) {}
     template <typename RNGType>
     std::pair<std::unique_ptr<Trace>,double> generate(RNGType& rng,
-                                                      Parameters& parameters, const Output& output, bool gradient) {
+                                                      Parameters& parameters, const Output& output,
+                                                      const gentl::GenerateOptions& options) {
         double y = output.y;
         double log_weight = logpdf(x, y, parameters.m(), parameters.b());
-        if (gradient) {
+        if (options.precompute_gradient()) {
             double m_grad, b_grad, x_grad;
             std::tie(m_grad, b_grad, x_grad) = logpdf_gradient(x, y, parameters.m(), parameters.b());
             auto trace = std::unique_ptr<Trace>(new Trace(x, y, parameters, m_grad, b_grad, x_grad));

@@ -13,14 +13,14 @@ add_executable(testlib
         seed_sequence.cpp
         sir.cpp
         particle_filter.cpp
-#        train_supervised.cpp
+        train_supervised.cpp
         )
 
 # I'm using C++17 in the test
 target_compile_features(testlib PRIVATE cxx_std_17)
 
 target_include_directories(testlib PRIVATE ../include)
-target_include_directories(testlib PRIVATE ../third_party/eigen)
+target_include_directories(testlib PRIVATE ../third_party/Eigen)
 
 # Should be linked to the main library, as well as the Catch2 testing library
 target_link_libraries(testlib PRIVATE Catch2::Catch2 Threads::Threads)
