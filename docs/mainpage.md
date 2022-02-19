@@ -72,7 +72,7 @@ If you want your generative model to be resuable as a building block within othe
 For models that are represented as generative functions, there is a dependency between the change objects that can be passed to the `update` function of a trace, and the set of valid inputs to the generative function from which the trace originated:
 `update` must accept change objects that encode a change of the input to the generative function to any valid input value.
 
-<div id="interface">
+<div id="interface"></div>
 ## Interface documentation
 
 This section describes the member functions that are expected by GenTL for user-defined types that represent distributions, traces, generative functions, and the other auxiliary types.
@@ -236,8 +236,6 @@ Parameter stores contain the state \f$\theta\f$ of some learnable parameters and
 provide A parameter store type `Parameters` must provide `typename Parameters::accumulator_t`, and the accumulator type must have a constructor that takes a `Parameters` object as its only argument.
 The gradient values are initialized to zero, and are accumulated by calling the `update_gradient()` member function on a gradient accumulator object.
 The indirection between parameter stores and gradient accumulators is meant to facilitate multi-threaded gradient-based algorithms inwhich different threads accumulate gradients in parallel in thread-local gradient accumulators.
-
-</div> <!--- div interface -->
 
 ## Functionality
 
