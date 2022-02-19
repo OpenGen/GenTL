@@ -238,15 +238,19 @@ The indirection between parameter stores and gradient accumulators is meant to f
 
 ## Functionality
 
+Distribution, trace, and generative function types that implement the above interface (or certain subsets of the interface) can be used with the following GenTL features:
+
 ### Modeling
+
+GenTL contains some generic modeling constructs that can be used to compose more complex models from user-defined generative functions.
 
 #### Sequential and Temporal Models
 
-- gentl::modeling::sequence::Model
-
-- gentl::modeling::sequence::Trace
+- Distribution type gentl::modeling::sequence::Model (with associated trace type gentl::modeling::sequence::Trace), that takes a user-defined generative function defining a transition kernel and gives a generative function that unrolls the kernel over a variable number of time steps.
 
 ### Inference and Learning
+
+GenTL also contains building blocks for high-level implementation of inference and learning algorithms using traces.
 
 #### Markov chain Monte Carlo (MCMC)
 

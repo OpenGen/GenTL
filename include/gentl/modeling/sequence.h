@@ -262,37 +262,5 @@ std::pair<std::unique_ptr<typename Model<Submodel,Subtrace,Value,Parameters>::tr
     return {std::move(trace), 0.0};
 }
 
-// **********************************
-// *** Ring Buffer Implementation ***
-// **********************************
-
-
-template <typename Submodel, typename Subtrace, typename Value, typename Parameters, size_t N>
-class RingBufferTrace {
-private:
-    std::unique_ptr<std::array<Subtrace,N>> subtraces_;
-    std::unique_ptr<std::array<Subtrace,N>> subtraces_alternate_;
-    size_t next_;
-    bool revertable_;
-public:
-    void revert() {
-        if (!revertible)
-            throw std::logic_error("not revertible");
-        std::swap(subtraces_, subtraces_alternate_);
-        revertable_ = false;
-    }
-    std::unique_ptr<RingBufferTrace<Submodel,Subtrace,Value,Parameters,N> fork() const {
-        // TODO
-    }
-    void fork(RingBuferTrace& other) const {
-        if(other.subtraces_alternate_)
-            other.subtraces_alternate_.reset();
-        // TODO
-    }
-
-};
-
-
-
 }
 #endif //GENTL_SEQUENCE_H
