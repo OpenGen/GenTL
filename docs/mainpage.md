@@ -102,6 +102,9 @@ Also see the [Involutive MCMC paper](https://arxiv.org/abs/2007.09871) for a for
 
 Each distribution object is associated with some trace type, which we will call `Trace` in the documentation that follows.
 Note that GenTL does not contain any abstract class `Trace`.
+Similarly, the other types used below, including `RNG`, `ParameterStore`, `ChoiceBuffer`, `GradientAccumulator`, and `Selection`, do not refer to abstract classes.
+GenTL functions use template parameters for all of these types.
+With the exception of `RNG` these types are expected to be user-defined.
 
 <h4 id="simulate">simulate</h4>
 
@@ -156,6 +159,20 @@ TODO: document math
 Also see gentl::UpdateOptions.
 
 The MCMC functionality in gentl::mcmc requires that an overload of `update` is provided for `Change` equal to gentl::change::NoChange`.
+
+<h4 id="backward_constraints">backward_constraints</h4>
+
+TODO: this should probably be moved to be an additional return value from `update`, since it's return type may depend on the type of the constraints passed to `update`.
+Users should be permitted to implement multiple variants of `update` that accept different choice buffer types and return different choice buffer types as backward constraints.
+
+```
+const ChoiceBuffer& backward_constraints();
+```
+
+TODO: document math (this corresponds to the 'discard' object in Gen.jl).
+
+The reference is invalidated by a subsequent call to `update` or `revert`.
+
 
 <h4 id="return_value">return_value</h4>
 
@@ -233,7 +250,7 @@ A generative function is an object that is callable for some input type, and the
 ### Parameter store and gradient accumulator member functions
 
 Parameter stores contain the state \f$\theta\f$ of some learnable parameters and the state of their gradient.
-provide A parameter store type `Parameters` must provide `typename Parameters::accumulator_t`, and the accumulator type must have a constructor that takes a `Parameters` object as its only argument.
+provide A parameter store type `ParameterStore` must provide `typename ParameterStore::accumulator_t`, and the accumulator type must have a constructor that takes a `ParameterStore` object as its only argument.
 The gradient values are initialized to zero, and are accumulated by calling the `update_gradient()` member function on a gradient accumulator object.
 The indirection between parameter stores and gradient accumulators is meant to facilitate multi-threaded gradient-based algorithms inwhich different threads accumulate gradients in parallel in thread-local gradient accumulators.
 
