@@ -87,6 +87,10 @@ namespace constraints {
     constexpr Empty empty;
 }
 
+// ****************************************
+// *** Backpointer Trace Implementation ***
+// ****************************************
+
 // TimeSlice
 template <typename SubtraceType>
 class TimeSlice {
@@ -123,18 +127,14 @@ public:
             RNGType& rng, Parameters& parameters, const constraints::Empty& obs, const GenerateOptions&) const;
 };
 
-// TODO implement save_previous
-//        size_t private_t_alternate_; // NOTE: this can be different!
-//        std::shared_ptr<TimeSlice<SubtraceType> last_alternate_;
+// TODO implement support for save
 // TODO add configuration for how many recent states to store pointers to
-// to avoid having to reconstruct history each time we update
-// TODO: add optimization that uses private_t_ to avoid copying non-shared subtraces
+// TODO add optimization that uses private_t_ to avoid copying non-shared subtraces
 
 template <typename Submodel, typename Subtrace, typename Value, typename Parameters>
 class Trace {
 private:
     size_t t_; // the number of time steps (0 means there are no subtraces)
-//        size_t last_private_t_; // the time step (starting from 0) of the last non-shared time slice
     std::shared_ptr<TimeSlice<Subtrace>> last_; // initially a nullptr
     const Submodel& submodel_;
     Parameters& parameters_;
@@ -145,7 +145,6 @@ private:
 public:
     Trace(const Submodel& submodel, Value init_value, Parameters& parameters) :
             t_(0),
-//                last_private_t_(0),
             last_{nullptr},
             submodel_(submodel), parameters_(parameters), init_value_(init_value),
             backward_void_ptr_(nullptr) {}
@@ -175,7 +174,7 @@ public:
     }
 
     // mutates history (copy-on-write)
-    // TODO the trace owns the backwards object, but there are several types of backwards objects we could get
+    // NOTE the trace owns the backwards object, but there are several types of backwards objects we could get
     template<typename RNGType, typename Constraint>
     #ifdef __cpp_concepts
     requires Updatable<Subtrace, modelchange::None, Constraint>
@@ -262,5 +261,38 @@ std::pair<std::unique_ptr<typename Model<Submodel,Subtrace,Value,Parameters>::tr
     auto trace = std::make_unique<trace_type>(submodel_, init_value_, parameters);
     return {std::move(trace), 0.0};
 }
+
+// **********************************
+// *** Ring Buffer Implementation ***
+// **********************************
+
+
+template <typename Submodel, typename Subtrace, typename Value, typename Parameters, size_t N>
+class RingBufferTrace {
+private:
+    std::unique_ptr<std::array<Subtrace,N>> subtraces_;
+    std::unique_ptr<std::array<Subtrace,N>> subtraces_alternate_;
+    size_t next_;
+    bool revertable_;
+public:
+    void revert() {
+        if (!revertible)
+            throw std::logic_error("not revertible");
+        std::swap(subtraces_, subtraces_alternate_);
+        revertable_ = false;
+    }
+    std::unique_ptr<RingBufferTrace<Submodel,Subtrace,Value,Parameters,N> fork() const {
+        // TODO
+    }
+    void fork(RingBuferTrace& other) const {
+        if(other.subtraces_alternate_)
+            other.subtraces_alternate_.reset();
+        // TODO
+    }
+
+};
+
+
+
 }
 #endif //GENTL_SEQUENCE_H
